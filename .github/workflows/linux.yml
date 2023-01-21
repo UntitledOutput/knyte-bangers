@@ -11,6 +11,10 @@ on:
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
+  
+permissions:
+    statuses: write
+    contents: write
 
 jobs:
   build:
@@ -22,6 +26,12 @@ jobs:
     
     - name: remove admin req from shell script
       run: chmod +x linux.sh
+      
+    - name: remove admin req from premake script
+      run: chmod +x premake5
+      
+    - name: install libx11-dev
+      run: sudo apt install xorg-dev
     
     - name: build
       run: ./linux.sh
