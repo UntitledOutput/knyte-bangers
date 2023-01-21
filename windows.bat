@@ -1,1 +1,1 @@
-cd projects/VS2022 && msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} .
+cd projects/VS2022 && msbuild /m /p:Configuration=Release .
