@@ -80,7 +80,7 @@ workspace (workspaceName)
 
     targetdir "_bin/%{cfg.buildcfg}/"
 
-    if(os.isdir("src")) then
+    if(os.isdir("")) then
         startproject(workspaceName)
     end
 
