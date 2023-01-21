@@ -31,7 +31,7 @@ jobs:
       run: chmod +x premake5
       
     - name: install libx11-dev
-      run: sudo apt-cache policy xorg-dev
+      run: sudo apt install xorg-dev
     
     - name: build
       run: ./linux.sh
