@@ -35,8 +35,5 @@ jobs:
     
     - name: build
       run: ./linux.sh
-    - name: Release artifact
-      uses: actions/upload-artifact@v2
-      with: 
-          name: build
-          path: D:/a/egg-2/egg-2/_bin/Debug/
+    - name: list files
+      run: ls
