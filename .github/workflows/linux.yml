@@ -22,5 +22,10 @@ jobs:
     
     - name: cd source
       run: cd src/
+      
+      
+    - name: list files
+      run: ls
+      
     - name: build
       run: make
