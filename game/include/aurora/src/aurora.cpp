@@ -6,8 +6,8 @@
 #define MAX_MODEL_COUNT 10000
 #endif // MACRO
 
-#if !defined(MAX_ACTOR_COUNT)
-#define MAX_ACTOR_COUNT 10000
+#if !defined(MAX_Entity_COUNT)
+#define MAX_Entity_COUNT 10000
 #endif // MACRO
 
 const std::size_t Component::Type = std::hash<const char*>()(TO_STRING(Component));
@@ -72,7 +72,7 @@ Scene CreateScene(){
 
     //scene.entityData->entityCount = 0;
 
-    //scene.entityData->entities = (Entity* )RL_CALLOC(MAX_ACTOR_COUNT, sizeof(Entity));
+    //scene.entityData->entities = (Entity* )RL_CALLOC(MAX_Entity_COUNT, sizeof(Entity));
 
     return scene;
 }
@@ -101,12 +101,12 @@ void ComponentHolder::Attach(Args&&... params) {
     components.emplace_back(std::make_unique< CompType >(std::forward< Args >(params)...));
 }
 
-void ComponentHolder::Update(Actor* actor) {
+void ComponentHolder::Update(Entity* Entity) {
     for (auto const& component : components) {
 
         auto comp = component.get();
 
-        comp->Update(actor);
+        comp->Update(Entity);
     }
 };
 

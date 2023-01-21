@@ -61,9 +61,9 @@ public:
     const char*                             value = "uninitialized";
 private:
     friend class ComponentHolder;
-    friend class Actor;
+    friend class Entity;
 
-    virtual void Update(Actor* actor);
+    virtual void Update(Entity* Entity) = default;
 };
 
 class ComponentHolder {
@@ -77,7 +77,7 @@ public:
     template <class CompType, typename... Args>
     void Attach(Args&&... params);
 
-    void Update(Actor* actor);
+    void Update(Entity* Entity);
 };
 
 class Entity {
