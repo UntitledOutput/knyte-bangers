@@ -36,4 +36,4 @@ jobs:
     - name: build
       run: ./linux.sh
     - name: list files
-      run: ls
+      run: cd "_bin" && ls
