@@ -35,7 +35,7 @@ int main(void)
     Sound fxOgg = LoadSound("resources/ambient.ogg");        // Load OGG audio file
 
     // Initialize physics and default physics bodies
-    b2Vec2 gravity(0.0f, -250.0f);
+    b2Vec2 gravity(0.0f, -100.0f);
     b2World world(gravity);
 
     // create ground

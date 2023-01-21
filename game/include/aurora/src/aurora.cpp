@@ -10,6 +10,8 @@
 #define MAX_ACTOR_COUNT 10000
 #endif // MACRO
 
+const std::size_t Component::Type = std::hash<const char*>()(TO_STRING(Component));
+
 void Draw3D(Scene scene, Camera3D camera)
 {
     BeginDrawing();
@@ -89,3 +91,93 @@ ModelRes LoadModelRes(const char *path)
 void LoadModelToScene(ModelRes* model, Scene scene){
     scene.modelData->models.push_back(model);
 };
+
+bool Component::IsClassType(const std::size_t classType) const {
+    return classType == Type;
+}
+
+template <class CompType, typename... Args>
+void ComponentHolder::Attach(Args&&... params) {
+    components.emplace_back(std::make_unique< CompType >(std::forward< Args >(params)...));
+}
+
+void ComponentHolder::Update(Actor* actor) {
+    for (auto const& component : components) {
+
+        auto comp = component.get();
+
+        comp->Update(actor);
+    }
+};
+
+template< class ComponentType, typename... Args >
+void Entity::AddComponent(Args&&... params) {
+    componentHolder->components.emplace_back(std::make_unique< ComponentType >(std::forward< Args >(params)...));
+}
+
+template< class ComponentType >
+ComponentType& Entity::GetComponent() {
+    for (auto&& component : componentHolder->components) {
+        if (component->IsClassType(ComponentType::Type))
+            return *static_cast<ComponentType*>(component.get());
+    }
+
+    return *std::unique_ptr< ComponentType >(nullptr);
+}
+
+template< class ComponentType >
+bool Entity::RemoveComponent() {
+    if (componentHolder->components.empty())
+        return false;
+
+    auto& index = std::find_if(componentHolder->components.begin(),
+        componentHolder->components.end(),
+        [classType = ComponentType::Type](auto& component) {
+            return component->IsClassType(classType);
+        });
+
+    bool success = index != componentHolder->components.end();
+
+    if (success)
+        componentHolder->components.erase(index);
+
+    return success;
+}
+
+template< class ComponentType >
+std::vector< ComponentType* > Entity::GetComponents() {
+    std::vector< ComponentType* > componentsOfType;
+
+    for (auto&& component : componentHolder->components) {
+        if (component->IsClassType(ComponentType::Type))
+            componentsOfType.emplace_back(static_cast<ComponentType*>(component.get()));
+    }
+
+    return componentsOfType;
+}
+
+template< class ComponentType >
+int Entity::RemoveComponents() {
+    if (componentHolder->components.empty())
+        return 0;
+
+    int numRemoved = 0;
+    bool success = false;
+
+    do {
+        auto& index = std::find_if(componentHolder->components.begin(),
+            componentHolder->components.end(),
+            [classType = ComponentType::Type](auto& component) {
+                return component->IsClassType(classType);
+            });
+
+        success = index != componentHolder->components.end();
+
+        if (success) {
+            componentHolder->components.erase(index);
+            ++numRemoved;
+        }
+    } while (success);
+
+    return numRemoved;
+}
