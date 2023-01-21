@@ -24,7 +24,6 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    steps:
     - uses: maxim-lobanov/setup-xcode@v1
       with:
         xcode-version: latest-stable
