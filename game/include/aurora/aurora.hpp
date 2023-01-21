@@ -3,6 +3,7 @@
 
 #include <typeinfo> 
 #include <memory>
+#include <algorithm>
 
 class Entity;
 
