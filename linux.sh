@@ -1,2 +1,2 @@
-cd src/
+./premake5 gmake2
 make
