@@ -21,7 +21,7 @@ jobs:
     - uses: actions/checkout@v3
     
     - name: remove admin req from shell script
-      run: git update-index --chmod=+x linux.sh
+      run: git update-index --chmod=+x ./linux.sh
     
     - name: build
       run: ./linux.sh
