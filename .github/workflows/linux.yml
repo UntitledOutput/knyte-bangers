@@ -20,12 +20,12 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     
-    - name: cd source
-      run: cd "src"
+    - name: premake
+      run: ./premake5 gmake2
       
       
     - name: list files
       run: ls
       
     - name: build
-      run: make src/Makefile
+      run: make
