@@ -61,3 +61,10 @@ dkms.conf
 
 # Build folder
 [Bb]uild
+
+[Rr]aylib-master
+
+_build
+
+Makefile
+Makefile.Android
