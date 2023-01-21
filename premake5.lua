@@ -91,7 +91,7 @@ workspace (workspaceName)
     end
 
     cdialect "C99"
-    cppdialect "C++11"
+    cppdialect "C++14"
 
     --compileas "C++"    
 
