@@ -4,6 +4,8 @@
 #include <typeinfo> 
 #include <memory>
 
+class Entity;
+
 #define TO_STRING( x ) #x
 
 //****************
@@ -63,7 +65,7 @@ private:
     friend class ComponentHolder;
     friend class Entity;
 
-    virtual void Update(Entity* Entity) {};
+    virtual void Update(Entity* Entity);
 };
 
 class ComponentHolder {

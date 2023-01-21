@@ -181,3 +181,5 @@ int Entity::RemoveComponents() {
 
     return numRemoved;
 }
+
+void Component::Update(Entity* Entity) {};
