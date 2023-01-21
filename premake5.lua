@@ -28,6 +28,7 @@ end
 function link_to(lib)
     links (lib)
     includedirs ("../"..lib.."/include", "../"..lib.."/" )
+    --include("../"..lib.."/premake5.lua")
 end
 
 function download_progress(total, current)
@@ -63,6 +64,9 @@ end
 workspace (workspaceName)
     configurations { "Debug", "Release"}
     platforms { "x64", "x86"}
+    
+
+    includedirs {"game/include"}
 
     filter "configurations:Debug"
         defines { "DEBUG" }
@@ -78,6 +82,8 @@ workspace (workspaceName)
 
     filter {}
 
+    --link_to("aurora")
+
     targetdir "_bin/%{cfg.buildcfg}/"
 
     if(os.isdir("game")) then
@@ -89,11 +95,10 @@ workspace (workspaceName)
 
     --compileas "C++"    
 
-    link_to("aurora")
-
 check_raylib();
 
 include ("raylib_premake5.lua")
+--include ("aurora/premake5.lua")
 
 if(os.isdir("game")) then
     include ("game")
