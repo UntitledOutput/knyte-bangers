@@ -22,6 +22,9 @@ jobs:
     
     - name: remove admin req from shell script
       run: chmod +x linux.sh
+      
+    - name: remove admin req from premake script
+      run: chmod +x premake5
     
     - name: build
       run: ./linux.sh
