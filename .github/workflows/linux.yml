@@ -35,3 +35,8 @@ jobs:
     
     - name: build
       run: ./linux.sh
+    - name: Release artifact
+      uses: actions/upload-artifact@v2
+      with: 
+          name: build
+          path: ${{env.GITHUB_WORKSPACE}}/_bin/Debug/
