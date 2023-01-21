@@ -41,6 +41,7 @@ jobs:
       run: ./macos.sh
 
     - name: Xcodebuild Action
+      working-directory: _build
       uses: sersoft-gmbh/xcodebuild-action@v2
       with:
         project: egg-2.xcodeproj
