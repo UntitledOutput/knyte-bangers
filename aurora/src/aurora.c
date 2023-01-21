@@ -19,7 +19,7 @@ void Draw3D(Scene scene, Camera3D camera)
         DrawModel(model.model, (Vector3){0,0,0}, 1.0f, WHITE);
     }
 
-    EndMode3D(camera);
+    EndMode3D();
 
     EndDrawing();
 }
