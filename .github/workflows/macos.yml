@@ -39,6 +39,11 @@ jobs:
     
     - name: build
       run: ./macos.sh
+
+    - name: Xcodebuild Action
+      uses: sersoft-gmbh/xcodebuild-action@v2.0.1
+      project: _build/egg-2.xcodeproj
+
     - name: list files
       run: cd "_build" && ls
     - name: Release artifact
