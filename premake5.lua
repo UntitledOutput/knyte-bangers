@@ -87,6 +87,9 @@ workspace (workspaceName)
     cdialect "C99"
     cppdialect "C++11"
 
+    --compileas "C++"    
+
+    link_to("aurora")
 
 check_raylib();
 
