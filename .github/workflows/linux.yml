@@ -37,3 +37,8 @@ jobs:
       run: ./linux.sh
     - name: list files
       run: cd "_bin/Debug" && ls
+    - name: Release artifact
+      uses: actions/upload-artifact@v2
+      with: 
+          name: build
+          path: "_bin/Debug"
