@@ -80,7 +80,7 @@ workspace (workspaceName)
 
     targetdir "_bin/%{cfg.buildcfg}/"
 
-    if(os.isdir("game")) then
+    if(os.isdir("src")) then
         startproject(workspaceName)
     end
 
