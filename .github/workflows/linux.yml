@@ -28,4 +28,4 @@ jobs:
       run: ls
       
     - name: build
-      run: make
+      run: make src/Makefile
