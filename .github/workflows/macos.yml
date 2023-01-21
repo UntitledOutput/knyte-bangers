@@ -23,6 +23,11 @@ jobs:
     
     steps:
     - uses: actions/checkout@v3
+
+    steps:
+    - uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest-stable
     
     - name: remove admin req from shell script
       run: chmod +x macos.sh
@@ -36,7 +41,7 @@ jobs:
     - name: build
       run: ./macos.sh
     - name: list files
-      run: cd "_bin/Debug" && ls
+      run: cd "_build" && ls
     - name: Release artifact
       uses: actions/upload-artifact@v2
       with: 
