@@ -42,6 +42,7 @@ jobs:
 
     - name: Xcodebuild Action
       uses: sersoft-gmbh/xcodebuild-action@v2.0.1
+      with:
         project: _build/egg-2.xcodeproj
 
     - name: list files
