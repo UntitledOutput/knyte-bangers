@@ -63,7 +63,7 @@ private:
     friend class ComponentHolder;
     friend class Entity;
 
-    virtual void Update(Entity* Entity) = default;
+    virtual void Update(Entity* Entity) {};
 };
 
 class ComponentHolder {
