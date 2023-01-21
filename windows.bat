@@ -1,1 +1,1 @@
-cd projects/VS2022 && msbuild /m /p:Configuration=Release .
+.\premake-VisualStudio.bat && msbuild /m /p:Configuration=Release . || MSBuild.exe /m /p:Configuration=Release .
