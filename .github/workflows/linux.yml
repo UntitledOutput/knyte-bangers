@@ -20,5 +20,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     
-    - name: run
-      run: ./linux.sh
+    - name: cd source
+      run: cd src/
+    - name: build
+      run: make
