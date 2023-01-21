@@ -62,7 +62,7 @@ dkms.conf
 # Build folder
 [Bb]uild
 
-[Rr]aylib-master
+#[Rr]aylib-master
 
 _build
 
