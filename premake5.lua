@@ -13,6 +13,24 @@ newoption
     default = "opengl33"
 }
 
+newoption 
+{
+    trigger = "platform",
+    value = "BUILD_PLATFORM",
+    description = "what platform to build for",
+    allowed = {
+        { "windows", "Windows" },
+        { "linux", "Linux" },
+        { "macos", "macOS" },
+        { "android", "Android" },
+        { "uwp", "Windows UWP" },
+        { "rpi-native", "Native Raspbian" },
+        { "rpi-x11", "X11 Raspbian" },
+        { "web", "Web" },
+    },
+    default = "windows"
+}
+
 function define_C()
     language "C"
 end
@@ -66,7 +84,7 @@ workspace (workspaceName)
     platforms { "x64", "x86"}
     
 
-    includedirs {"game/include"}
+    includedirs {"game/include", "game/include/imgui"}
 
     filter "configurations:Debug"
         defines { "DEBUG" }

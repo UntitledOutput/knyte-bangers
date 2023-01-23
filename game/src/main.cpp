@@ -2,9 +2,9 @@
 
 #include "raylib.h"
 #include "rlgl.h"
-#include "aurora/aurora.hpp"
 
-#include "box2d/box2d.h"
+
+#include "aurora/aurora.hpp"
 
 void drawCallback() {
     DrawGrid(10,1.0f);
@@ -12,8 +12,17 @@ void drawCallback() {
 
 int main(void)
 {
-    InitWindow(800, 450, "Egg");
+    InitWindow(800, 450, "KnyteBangers");
     SetWindowState(FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI | FLAG_WINDOW_RESIZABLE);
+
+    
+    Engine engine = Engine();
+    engine.Init();
+    
+    TestScene* scene = engine.sceneMgr->LoadScene<TestScene>();
+    scene->isActive = true;
+    scene->scene_init();
+        
 
     //Scene scene = CreateScene();
     //ModelRes model = LoadModelRes("resources/testmodel.fbx");
@@ -68,6 +77,9 @@ int main(void)
 
     while (!WindowShouldClose())
     {
+
+        engine.Update();
+
         //UpdateCamera(&camera);
 
         movementMultiplier = 0;
@@ -97,6 +109,7 @@ int main(void)
             PlaySound(fxOgg);
         }
 
+        /*
         BeginDrawing();
 
         ClearBackground(RAYWHITE);
@@ -114,6 +127,7 @@ int main(void)
         //DrawText(TextFormat("%.2f, %.2f", player.x, player.y), 250,250,31,BLACK);
 
         EndDrawing();
+        */
 
         //Draw3DCallback(scene, camera, drawCallback);
     }

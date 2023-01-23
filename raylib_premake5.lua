@@ -19,6 +19,18 @@ function platform_defines()
 
     filter {"system:linux"}
         defines {"_GNU_SOURCE"}
+    
+    filter {"options:platform=linux"}
+        defines{"_GNU_SOURCE"}
+    
+    filter {"options:platform=macos"}
+        disablewarnings {"deprecated-declarations"}
+
+    filter {"options:platform=android"}
+        defines{"PLATFORM_ANDROID"}
+
+    filter {"options:platform=web"}
+        defines{"GRAPHICS_API_OPENGL_11"}
 -- This is necessary, otherwise compilation will fail since
 -- there is no CLOCK_MONOTOMIC. raylib claims to have a workaround
 -- to compile under c99 without -D_GNU_SOURCE, but it didn't seem
