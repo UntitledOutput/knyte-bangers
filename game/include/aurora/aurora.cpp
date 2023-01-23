@@ -16,6 +16,7 @@ CLASS_DEFINITION(Component, Renderer2D)
 CLASS_DEFINITION(Component, Rigidbody2D)
 CLASS_DEFINITION(Component, Collider2D)
 CLASS_DEFINITION(Collider2D, BoxCollider2D)
+CLASS_DEFINITION(Renderer2D, AnimatedRenderer2D)
 
 Camera3D Load3DCamera(float fovy, Vector3 position, CameraProjection projection, Vector3 target, Vector3 up) {
     Camera3D cam = {0};
@@ -132,18 +133,6 @@ void ComponentHolder::Update(Entity* Entity) {
     }
 };
 
-template< class ComponentType, typename... Args >
-ComponentType* Entity::AddComponent(Args&&... params) {
-    componentHolder->components.emplace_back(std::make_unique< ComponentType >(std::forward< Args >(params)...));
-
-    for (auto&& component : componentHolder->components) {
-        if (component->IsClassType(ComponentType::Type))
-            return static_cast<ComponentType*>(component.get());
-    }
-
-    return new ComponentType();
-}
-
 template< class ComponentType >
 ComponentType* Entity::GetComponent() {
     for (auto&& component : componentHolder->components) {
@@ -218,7 +207,29 @@ void Entity::Update() {
 };
 
 void Renderer2D::Update(Entity* entity) {
-    DrawTextureRec(texture, rec, {rec.x,rec.y }, WHITE);
+    DrawTextureRec(texture, rec, {entity->position.x,entity->position.y }, WHITE);
+}
+
+void AnimatedRenderer2D::Update(Entity* Entity) 
+{
+    framesCounter++;
+    if (framesCounter >= (60/12))
+    {
+    framesCounter = 0;
+    currentFrame++;
+
+    if (currentFrame > frameCounter-1) currentFrame = 0;
+
+    frameRec.x = (float)currentFrame*(float)texture.width/frameCounter;
+    }
+    DrawTextureRec(texture, frameRec, {Entity->position.x,Entity->position.y }, WHITE);
+}
+
+void AnimatedRenderer2D::Init(Texture tex, int frameCount)
+{
+    texture = tex;
+    frameCounter = frameCount;  
+    frameRec = { 0.0f, 0.0f, (float)texture.width/frameCount, (float)texture.height/frameCount };
 }
 
 void Renderer2D::Init()
@@ -326,6 +337,10 @@ void Scene::scene_unload()
 
 void Scene::originalBegin2D(aurCamera* cam)
 {
+    if (cam->attachedEntity) {
+        cam->cam2D.target = {cam->attachedEntity->position.x, cam->attachedEntity->position.y};
+        cam->cam2D.offset = {0,0};
+    }
     BeginDrawing();
     ClearBackground(BLACK);
     BeginMode2D((Camera2D)cam->cam2D);

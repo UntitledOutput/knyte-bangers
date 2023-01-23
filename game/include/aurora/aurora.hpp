@@ -62,6 +62,15 @@ public:
     Camera2D cam2D;
     Camera3D cam3D;
 
+    bool useCam2D;
+
+    inline void Attach(Entity* entity) {
+        attachedEntity = entity;
+    };
+private:
+    friend class Scene;
+
+    Entity* attachedEntity;
 };
 
 class ModelRes {
@@ -130,7 +139,16 @@ public:
     ComponentHolder* componentHolder;
 
     template< class ComponentType, typename... Args >
-    ComponentType* AddComponent(Args&&... params);
+    inline ComponentType* AddComponent(Args&&... params) {
+        componentHolder->components.emplace_back(std::make_unique< ComponentType >(std::forward< Args >(params)...));
+
+        for (auto&& component : componentHolder->components) {
+            if (component->IsClassType(ComponentType::Type))
+                return static_cast<ComponentType*>(component.get());
+        }
+
+        return new ComponentType();
+    }
 
     template< class ComponentType >
     ComponentType* GetComponent();
@@ -160,6 +178,28 @@ public:
 
     void Update(Entity* Entity);
     void Init();
+    Rectangle rec;
+private:
+};
+
+class AnimatedRenderer2D : public Renderer2D {
+    CLASS_DECLARATION( AnimatedRenderer2D )
+public:
+    AnimatedRenderer2D(std::string&& initialValue)
+        : Renderer2D(std::move(initialValue)) {
+    }
+
+    AnimatedRenderer2D() = default;
+
+    Texture2D texture;
+
+    Rectangle frameRec;
+    int currentFrame = 0;
+    int framesCounter = 0;
+    int frameCounter;
+
+    void Update(Entity* Entity);
+    void Init(Texture tex, int frameCount);
     Rectangle rec;
 private:
 };
@@ -345,19 +385,18 @@ public:
     void scene_init() {
         originalSetup();
         Entity* player = entityData->createEntity();
-        Renderer2D* renderer = player->AddComponent<Renderer2D>();
-        renderer->Init();
-        renderer->texture = LoadTexture("resources/mecha.png");
-        renderer->rec = { 400, 280, 40, 40 };
-        player->position = { 0,0,0 };
+        AnimatedRenderer2D* renderer = player->AddComponent<AnimatedRenderer2D>();
+        renderer->Init(LoadTexture("resources/spritesheet.png"), 13);
+        player->position = { 40,40,0 };
 
 
         Camera2D camera = { 0 };
-        camera.target = { player->position.x + 20.0f, player->position.y + 20.0f };
-        camera.offset = { GetScreenWidth() / 2.0f, GetScreenHeight() / 2.0f };
+        camera.target = { player->position.x,player->position.y };
+        camera.offset = { 0,0 };
         camera.rotation = 0.0f;
         camera.zoom = 1.0f;
         aurCamera cam = engine->cameraMgr->loadCamera(camera);
+        cam.Attach(player);
     }
 
     void scene_update(aurCamera* cam) {

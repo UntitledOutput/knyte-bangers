@@ -118,6 +118,8 @@ check_raylib();
 include ("raylib_premake5.lua")
 --include ("aurora/premake5.lua")
 
+os.mkdir("_bin/%{cfg.buildcfg}/resources")
+
 if(os.isdir("game")) then
     include ("game")
 end

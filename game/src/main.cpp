@@ -12,8 +12,10 @@ void drawCallback() {
 
 int main(void)
 {
-    InitWindow(800, 450, "KnyteBangers");
+    InitWindow(1280, 720, "KnyteBangers");
     SetWindowState(FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI | FLAG_WINDOW_RESIZABLE);
+
+    InitAudioDevice();              // Initialize audio device
 
     
     Engine engine = Engine();
@@ -41,7 +43,9 @@ int main(void)
 
     //SetCameraMode(camera, CAMERA_ORBITAL);  // Set a orbital camera mode    
 
-    Sound fxOgg = LoadSound("resources/ambient.ogg");        // Load OGG audio file
+    Music music = LoadMusicStream("resources/Cyborg Ninja.mp3");        // Load OGG audio file
+
+    PlayMusicStream(music);
 
     // Initialize physics and default physics bodies
     b2Vec2 gravity(0.0f, -100.0f);
@@ -80,6 +84,11 @@ int main(void)
 
         engine.Update();
 
+                //----------------------------------------------------------------------------------
+        UpdateMusicStream(music);   // Update music buffer with new stream datap
+        SetMusicVolume(music, 0.0f);
+        
+
         //UpdateCamera(&camera);
 
         movementMultiplier = 0;
@@ -105,10 +114,6 @@ int main(void)
 
         camera.target = { player.x + 20, player.y + 20 };
 
-        if (!IsSoundPlaying(fxOgg)) {
-            PlaySound(fxOgg);
-        }
-
         /*
         BeginDrawing();
 
@@ -132,7 +137,8 @@ int main(void)
         //Draw3DCallback(scene, camera, drawCallback);
     }
 
-    UnloadSound(fxOgg);
+    UnloadMusicStream(music);
+    CloseAudioDevice();
 
     CloseWindow();
 
