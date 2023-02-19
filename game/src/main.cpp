@@ -12,19 +12,24 @@ void drawCallback() {
 
 int main(void)
 {
+
+
     InitWindow(1280, 720, "KnyteBangers");
     SetWindowState(FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI | FLAG_WINDOW_RESIZABLE);
 
-    InitAudioDevice();              // Initialize audio device
+    Texture2D icon = LoadTexture("resources/icon/main.png");
 
+    SetWindowIcon(LoadImageFromTexture(icon));
+
+    InitAudioDevice();              // Initialize audio device
     
-    Engine engine = Engine();
-    engine.Init();
+    engine = new Engine();
+    engine->Init();
     
-    TestScene* scene = engine.sceneMgr->LoadScene<TestScene>();
+    TestScene* scene = engine->sceneMgr->LoadScene<TestScene>();
     scene->isActive = true;
     scene->scene_init();
-        
+
 
     //Scene scene = CreateScene();
     //ModelRes model = LoadModelRes("resources/testmodel.fbx");
@@ -82,7 +87,7 @@ int main(void)
     while (!WindowShouldClose())
     {
 
-        engine.Update();
+        engine->Update();
 
                 //----------------------------------------------------------------------------------
         UpdateMusicStream(music);   // Update music buffer with new stream datap

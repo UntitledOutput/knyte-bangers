@@ -1,1 +1,1 @@
-.\premake-VisualStudio.bat && msbuild /m /p:Configuration=Debug .
+.\premake-VisualStudio.bat && msbuild /m /p:Configuration=Debug . 

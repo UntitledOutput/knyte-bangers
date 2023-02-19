@@ -17,6 +17,8 @@ CLASS_DEFINITION(Component, Rigidbody2D)
 CLASS_DEFINITION(Component, Collider2D)
 CLASS_DEFINITION(Collider2D, BoxCollider2D)
 CLASS_DEFINITION(Renderer2D, AnimatedRenderer2D)
+CLASS_DEFINITION(Component, Player)
+CLASS_DEFINITION(Component, TerrainGenerator)
 
 Camera3D Load3DCamera(float fovy, Vector3 position, CameraProjection projection, Vector3 target, Vector3 up) {
     Camera3D cam = {0};
@@ -131,17 +133,17 @@ void ComponentHolder::Update(Entity* Entity) {
 
         comp->Update(Entity);
     }
-};
-
-template< class ComponentType >
-ComponentType* Entity::GetComponent() {
-    for (auto&& component : componentHolder->components) {
-        if (component->IsClassType(ComponentType::Type))
-            return static_cast<ComponentType*>(component.get());
-    }
-
-    return new ComponentType();
 }
+void ComponentHolder::Unload()
+{
+    for (auto const& component : components) {
+
+        auto comp = component.get();
+
+        comp->Unload();
+    }
+}
+;
 
 template< class ComponentType >
 bool Entity::RemoveComponent() {
@@ -200,40 +202,75 @@ int Entity::RemoveComponents() {
     return numRemoved;
 }
 
-void Component::Update(Entity* Entity) {};
+void Component::Update(Entity* Entity) {}
+void Component::Unload()
+{
+}
+;
 void Entity::Update() {
     //DrawCircle(GetScreenWidth() / 2, GetScreenHeight() / 2, 10, RED);
+
+    Vector3 absPos = this->localPosition;
+    for (Entity* p = this->parent; p != nullptr; p = p->parent)
+        absPos = Vector3Add(absPos, p->localPosition);
+    globalPosition = absPos;
+
+    Vector3 absRot = this->localRotation;
+    for (Entity* p = this->parent; p != nullptr; p = p->parent)
+        absRot = Vector3Add(absRot, p->localRotation);
+    globalRotation = absRot;
+
+    Vector3 absScl = this->localScale;
+    for (Entity* p = this->parent; p != nullptr; p = p->parent)
+        absScl = Vector3Add(absScl, p->localScale);
+    globalScale = absScl;
+
     componentHolder->Update(this);
-};
+}
+void Entity::Unload()
+{
+    componentHolder->Unload();
+}
+;
 
 void Renderer2D::Update(Entity* entity) {
-    DrawTextureRec(texture, rec, {entity->position.x,entity->position.y }, WHITE);
+    //rec = { 0,0,(float)texture->tex.width * entity->globalScale.x, (float)texture->tex.height * entity->globalScale.y };
+    texture->Update();
+    DrawTexturePro(texture->tex, {0,0,(float)texture->tex.width, (float)texture->tex.height}, rec, {entity->globalPosition.x, entity->globalPosition.y}, 0,tint);
 }
 
-void AnimatedRenderer2D::Update(Entity* Entity) 
+void AnimatedRenderer2D::Update(Entity* entity) 
 {
-    framesCounter++;
-    if (framesCounter >= (60/12))
-    {
-    framesCounter = 0;
-    currentFrame++;
 
-    if (currentFrame > frameCounter-1) currentFrame = 0;
-
-    frameRec.x = (float)currentFrame*(float)texture.width/frameCounter;
-    }
-    DrawTextureRec(texture, frameRec, {Entity->position.x,Entity->position.y }, WHITE);
+    DrawTexturePro(
+        texture->tex,
+        srcRect,
+        {
+            entity->globalPosition.x,
+            entity->globalPosition.y,
+            rec.width,
+            rec.height,
+        },
+        {0,0},
+        0,
+        WHITE
+    );
 }
 
-void AnimatedRenderer2D::Init(Texture tex, int frameCount)
+void AnimatedRenderer2D::Init(const char* path)
+{
+    texture = entity->engine->textureMgr->LoadTextureM(path);
+}
+
+void AnimatedRenderer2D::Init(TextureRes* tex)
 {
     texture = tex;
-    frameCounter = frameCount;  
-    frameRec = { 0.0f, 0.0f, (float)texture.width/frameCount, (float)texture.height/frameCount };
 }
 
-void Renderer2D::Init()
+void Renderer2D::Init(TextureRes* res)
 {
+    texture = res;
+    tint = WHITE;
 }
 
 void Actor2D::Init()
@@ -307,16 +344,21 @@ void Engine::Init()
     sceneMgr = new SceneMgr();
     physicsMgr = new PhysicsMgr();
     cameraMgr = new CameraMgr();
-
+    textureMgr = new TextureMgr();
 
     sceneMgr->Init(this);
     physicsMgr->Init();
+    
 }
 
 void Engine::Update()
 {
     sceneMgr->Update(cameraMgr);
     physicsMgr->Update();
+}
+
+void Engine::Unload()
+{
 }
 
 void Scene::scene_init()
@@ -335,20 +377,19 @@ void Scene::scene_unload()
     printf("unloaded scene");
 }
 
-void Scene::originalBegin2D(aurCamera* cam)
+void Scene::originalBegin2D(aurCamera* cam, EntityData* entityData)
 {
-    if (cam->attachedEntity) {
-        cam->cam2D.target = {cam->attachedEntity->position.x, cam->attachedEntity->position.y};
-        cam->cam2D.offset = {0,0};
-    }
+
+
+
+    //printf("x: %.2f y: %.2f\n", cam->cam2D.target.x+cam->cam2D.offset.x, cam->cam2D.target.y+cam->cam2D.offset.y);
     BeginDrawing();
-    ClearBackground(BLACK);
+    ClearBackground(RAYWHITE);
     BeginMode2D((Camera2D)cam->cam2D);
     entityData->Update();
-    DrawFPS(10,10);
 }
 
-void Scene::originalBegin3D(aurCamera* cam)
+void Scene::originalBegin3D(aurCamera* cam, EntityData* entityData)
 {
     BeginDrawing();
     ClearBackground(BLACK);
@@ -356,15 +397,14 @@ void Scene::originalBegin3D(aurCamera* cam)
     entityData->Update();
 }
 
-void Scene::originalEnd()
+void Scene::originalEnd(bool use2D)
 {
-    rlImGuiBegin();
-    ImGui::ShowDemoWindow();
-    //ImGui::ShowDebugLogWindow(true);
-    rlImGuiEnd();
-    if (is2D) {
+    if (use2D) {
         EndMode2D();
+        //printf("2d");
     }
+    DrawFPS(10, 10);
+    
     EndDrawing();
 }
 
@@ -378,14 +418,18 @@ void Scene::originalUnload()
     rlImGuiShutdown();
 }
 
-void Rigidbody2D::Init(b2World world, Entity* entity)
+void Rigidbody2D::Update(Entity* Entity) {
+    Entity->globalPosition = {body->GetPosition().x, -body->GetPosition().y,0};
+}
+
+void Rigidbody2D::Init(b2World* world, Entity* entity, const b2Shape* shape)
 {
     b2BodyDef bodyDef;
     bodyDef.type = b2_dynamicBody;
-    bodyDef.position.Set(entity->position.x, entity->position.y);
-    b2Body* body = world.CreateBody(&bodyDef);
+    bodyDef.position.Set(entity->globalPosition.x, entity->globalPosition.y);
+    body = world->CreateBody(&bodyDef);
     b2FixtureDef fixtureDef;
-    fixtureDef.shape = entity->GetComponent<Collider2D>()->getShape();
+    fixtureDef.shape = shape;
     fixtureDef.density = 1.0f;
     fixtureDef.friction = 0.3f;
     body->CreateFixture(&fixtureDef);
@@ -405,28 +449,32 @@ b2Shape *Collider2D::getShape()
     return shape;
 }
 
+BoxCollider2D::BoxCollider2D() {
+    shape = b2PolygonShape();
+}
+
 void BoxCollider2D::Update(Entity *Entity)
 {
-    for (int i = 0; i < sizeof(shape->m_vertices); i++) {
-        Vector2 vert = {shape->m_vertices[i].x, shape->m_vertices[i].y};
+    for (int i = 0; i < sizeof(shape.m_vertices); i++) {
+        Vector2 vert = {shape.m_vertices[i].x, shape.m_vertices[i].y};
         Vector2 nextVert;
-        if (i == sizeof(shape->m_vertices)-1) {
-            nextVert = {shape->m_vertices[0].x, shape->m_vertices[0].y};
+        if (i == sizeof(shape.m_vertices)-1) {
+            nextVert = {shape.m_vertices[0].x, shape.m_vertices[0].y};
         } else {
-            nextVert = {shape->m_vertices[i+1].x, shape->m_vertices[i+1].y };
+            nextVert = {shape.m_vertices[i+1].x, shape.m_vertices[i+1].y };
         }
         DrawLineV(vert, nextVert, GREEN);
     }
 }
 
-void BoxCollider2D::Init(b2World world, float sx, float sy)
+void BoxCollider2D::Init(b2World* world, float sx, float sy)
 {
-    shape->SetAsBox(sx/2, sx/2);
+    shape.SetAsBox(sx/2, sx/2);
 }
 
 b2PolygonShape *BoxCollider2D::getShape()
 {
-    return shape;
+    return &shape;
 }
 
 void PhysicsMgr::Init()
@@ -437,17 +485,21 @@ void PhysicsMgr::Init()
 
 void PhysicsMgr::Update()
 {
+    world->SetGravity(gravity);
     float timeStep = 1.0f / GetFPS();
     int32 velocityIterations = 6;
     int32 positionIterations = 2;
     world->Step(timeStep, velocityIterations, positionIterations);
 }
 
-Entity *EntityData::createEntity()
+Entity *EntityData::createEntity(const char* name)
 {
     Entity* entity = new Entity();
     entity->componentHolder = new ComponentHolder();
-    entity->scale = { 1,1,1 };
+    entity->localScale = { 1,1,1 };
+    entity->engine = this->engine;
+    entity->scene = this->scene;
+    entity->name = name;
     entities.push_back(entity);
     return entity;
 }
@@ -455,37 +507,175 @@ Entity *EntityData::createEntity()
 void EntityData::Update()
 {
     for (Entity* entity : entities) {
-        entity->Update();
+        if (strcmp(entity->tag, "ui") != 0) {
+            entity->Update();
+        }
     }
 }
 
-aurCamera CameraMgr::loadCamera()
+void EntityData::UI_Update()
+{
+    for (Entity* entity : entities) {
+        if (strcmp(entity->tag, "ui") == 0) {
+            entity->Update();
+        }
+    }
+}
+
+void EntityData::Unload()
+{
+    for (Entity* entity : entities) {
+        entity->Unload();
+    }
+}
+
+aurCamera* CameraMgr::loadCamera()
 {
     aurCamera* camera = new aurCamera();
     delete currentCamera;
     currentCamera = camera;
     //camera->cam2D = cam;
-    return *camera;
+    return camera;
 }
 
-aurCamera CameraMgr::loadCamera(Camera2D cam)
+aurCamera* CameraMgr::loadCamera(Camera2D cam)
 {
     aurCamera* camera = new aurCamera();
     delete currentCamera;
     currentCamera = camera;
     camera->cam2D = cam;
-    return *camera;
+    return camera;
 }
 
-aurCamera CameraMgr::loadCamera(Camera3D cam)
+aurCamera* CameraMgr::loadCamera(Camera3D cam)
 {
     aurCamera* camera = new aurCamera();
     delete currentCamera;
     currentCamera = camera;
     camera->cam3D = cam;
-    return *camera;
+    return camera;
 }
 
 PhysicsMgr::PhysicsMgr() {
     world = new b2World(gravity);
 };
+
+void aurCamera::Update()
+{
+    if (attachedEntity) {
+        cam2D.target = { attachedEntity->globalPosition.x, attachedEntity->globalPosition.y };
+        cam2D.offset = { entW / 2.0f, entH / 2.0f };
+    }
+
+}
+
+TextureRes::TextureRes()
+{
+}
+
+TextureRes::TextureRes(Texture2D texture)
+{
+    tex = texture;
+}
+
+void TextureRes::Update()
+{
+}
+
+int InputManager::GetInput(InputAction action) {
+    if (action == DPADUP) {
+        return IsGamepadButtonDown(0, 1);
+    }
+    if (action == DPADDOWN) {
+        return IsGamepadButtonDown(0, 3);
+    }
+    if (action == DPADLEFT) {
+        return IsGamepadButtonDown(0, 4);
+    }
+    if (action == DPADRIGHT) {
+        return IsGamepadButtonDown(0, 2);
+    }
+    if (action == LEFTTRIGGER) {
+        return IsGamepadButtonDown(0, 10);
+    }
+    if (action == LEFTBUMBER) {
+        return IsGamepadButtonDown(0, 9);
+    }
+    if (action == RIGHTTRIGGER) {
+        return IsGamepadButtonDown(0, 12);
+    }
+    if (action == RIGHTBUMPER) {
+        return IsGamepadButtonDown(0, 11);
+    }
+    if (action == BUTTONUP) {
+        return IsGamepadButtonDown(0, 5);
+    }
+    if (action == BUTTONDOWN) {
+        return IsGamepadButtonDown(0, 7);
+    }
+    if (action == BUTTONLEFT) {
+        return IsGamepadButtonDown(0, 8);
+    }
+    if (action == BUTTONRIGHT) {
+        return IsGamepadButtonDown(0, 6);
+    }
+    if (action == START) {
+        return IsGamepadButtonDown(0, 13);
+    }
+    if (action == SELECT) {
+        return IsGamepadButtonDown(0, 15);
+    }
+}
+
+bool InputManager::GetMouseDown(MouseButton mb)
+{
+    return IsMouseButtonDown(mb);
+}
+
+Vector2 InputManager::GetMousePosition()
+{
+    return GetMousePosition();
+}
+
+
+
+float InputManager::GetInputAxis(InputAction action) {
+    if (action == LEFT || action == RIGHT || action == HORIZONTAL1) {
+        return GetGamepadAxisMovement(0, 0);
+    }
+    if (action == UP || action == DOWN || action == VERTICAL1) {
+        return GetGamepadAxisMovement(0, 1);
+    }
+    if (action == SECLEFT || action == SECRIGHT || action == HORIZONTAL2) {
+        return GetGamepadAxisMovement(0, 2);
+    }
+    if (action == SECUP || action == SECDOWN || action == VERTICAL2) {
+        return GetGamepadAxisMovement(0, 3);
+    }
+}
+
+TextureRes* TextureMgr::LoadTextureM(const char* path)
+{
+    TextureRes* tex = new TextureRes(LoadTexture(path));
+
+    textures.push_back(tex);
+
+    return tex;
+}
+
+TextureRes* TextureMgr::LoadTextureM(Texture2D tex)
+{
+    TextureRes* text = new TextureRes(tex);
+
+    textures.push_back(text);
+
+    return text;
+}
+
+void TextureMgr::UnloadTexture(int tindex)
+{
+}
+
+void TextureMgr::UnloadAll()
+{
+}

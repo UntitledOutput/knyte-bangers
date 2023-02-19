@@ -82,7 +82,7 @@ end
 workspace (workspaceName)
     configurations { "Debug", "Release"}
     platforms { "x64", "x86"}
-    
+    icon ("resources/icon/main.ico")
 
     includedirs {"game/include", "game/include/imgui"}
 
@@ -104,12 +104,14 @@ workspace (workspaceName)
 
     targetdir "_bin/%{cfg.buildcfg}/"
 
+    os.mkdir("_bin/%{cfg.buildcfg}/resources")
+
     if(os.isdir("game")) then
         startproject(workspaceName)
     end
 
     cdialect "C99"
-    cppdialect "C++14"
+    cppdialect "C++17"
 
     --compileas "C++"    
 
@@ -117,8 +119,6 @@ check_raylib();
 
 include ("raylib_premake5.lua")
 --include ("aurora/premake5.lua")
-
-os.mkdir("_bin/%{cfg.buildcfg}/resources")
 
 if(os.isdir("game")) then
     include ("game")
