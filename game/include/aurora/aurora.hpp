@@ -10,6 +10,12 @@
 #include "rlImGui.h"	// include the API header
 #include "rlImGuiColors.h"
 #include "imgui.h"
+//#include "imgui/misc/cpp/imgui_stdlib.h"
+
+#include "discord/discord_rpc.h"
+#include "discord/discord_register.h"
+
+static bool gInit, gRPC = true;
 
 // utilities
 #include "cJSON/cJSON.h"
@@ -22,6 +28,7 @@
 #include <map>
 #include <vector>
 #include <string>
+#include <chrono>//We will use chrono for the elapsed time.
 
 // physics
 #include "box2d/box2d.h"
@@ -64,6 +71,62 @@ bool childclass::IsClassType( const std::size_t classType ) const {             
             return true;                                                                    \
         return parentclass::IsClassType( classType );                                       \
 }                                                                                           \
+
+class Engine;
+class Player;
+class EntityData;
+
+namespace Game {
+    namespace UI {
+        namespace Devel {
+
+            static Entity* m_selectionContext;
+
+            void DrawConsole(Camera2D* cam, bool* lock, b2World* world, Engine* engine, Player* player, EntityData* entityData);
+            void DrawEntityNode(Entity* entity);
+        }
+    }
+};
+
+inline void SetupDiscord()
+{
+    if (gRPC)
+    {
+        DiscordEventHandlers handlers;
+        memset(&handlers, 0, sizeof(handlers));
+        Discord_Initialize("1076660278118322289", &handlers, 1, "0");
+    }
+    else
+    {
+        Discord_Shutdown();
+    }
+}
+
+inline static void UpdateDiscord(const char* sceneName, const char* internalSceneName)
+{
+    static int64_t StartTime = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+    if (gRPC)
+    {
+        DiscordRichPresence discordPresence;
+        memset(&discordPresence, 0, sizeof(discordPresence));
+        discordPresence.state = "Playing";
+        discordPresence.details = "";
+        discordPresence.startTimestamp = StartTime;
+        discordPresence.endTimestamp = NULL;
+        discordPresence.largeImageKey = internalSceneName;
+        discordPresence.largeImageText = sceneName;
+        discordPresence.smallImageKey = "dev";
+        discordPresence.smallImageText = "Developer Mode";
+        discordPresence.instance = 1;
+
+        Discord_UpdatePresence(&discordPresence);
+    }
+    else
+    {
+        Discord_ClearPresence();
+    }
+}
 
     // Input definitions
 
@@ -164,6 +227,54 @@ public:
     int modelCount;
 };
 
+
+// You must free the result if result is non-NULL.
+inline char* str_replace(char* orig, char* rep, char* with) {
+    char* result; // the return string
+    char* ins;    // the next insert point
+    char* tmp;    // varies
+    int len_rep;  // length of rep (the string to remove)
+    int len_with; // length of with (the string to replace rep with)
+    int len_front; // distance between rep and end of last rep
+    int count;    // number of replacements
+
+    // sanity checks and initialization
+    if (!orig || !rep)
+        return NULL;
+    len_rep = strlen(rep);
+    if (len_rep == 0)
+        return NULL; // empty rep causes infinite loop during count
+    if (!with)
+        with = "";
+    len_with = strlen(with);
+
+    // count the number of replacements needed
+    ins = orig;
+    for (count = 0; tmp = strstr(ins, rep); ++count) {
+        ins = tmp + len_rep;
+    }
+
+    tmp = result = (char*)malloc(strlen(orig) + (len_with - len_rep) * count + 1);
+
+    if (!result)
+        return NULL;
+
+    // first time through the loop, all the variable are set correctly
+    // from here on,
+    //    tmp points to the end of the result string
+    //    ins points to the next occurrence of rep in orig
+    //    orig points to the remainder of orig after "end of rep"
+    while (count--) {
+        ins = strstr(orig, rep);
+        len_front = ins - orig;
+        tmp = strncpy(tmp, orig, len_front) + len_front;
+        tmp = strcpy(tmp, with) + len_with;
+        orig += len_front + len_rep; // move to next "end of rep"
+    }
+    strcpy(tmp, orig);
+    return result;
+}
+
 class Component {
 public:
 
@@ -171,7 +282,6 @@ public:
     virtual bool                                IsClassType(const std::size_t classType) const {
         return classType == Type;
     }
-
 public:
 
     virtual                                ~Component() = default;
@@ -181,6 +291,12 @@ public:
 
     Component() = default;
 
+    virtual void imgui_properties() {};
+
+    inline virtual const char* GetName() {
+        return typeid(*this).name();
+    }
+
 public:
     std::string                             value = "uninitialized";
 private:
@@ -189,6 +305,7 @@ private:
 
     virtual void Update(Entity* Entity);
     virtual void Unload();
+
 public:
     Entity* entity;
 };
@@ -230,6 +347,8 @@ public:
     Scene* scene;
 
     const char* name;
+
+    int internalID;
 
     template< class ComponentType, typename... Args >
     inline ComponentType* AddComponent(Args&&... params) {
@@ -301,6 +420,29 @@ public:
 
     void Unload();
 
+    bool operator==(const Entity& other) const {
+        return internalID == other.internalID && scene == other.scene; 
+    };
+
+    bool operator!=(const Entity& other) const {
+        return !(*this == other);
+    }
+
+    inline void imgui_iterate()
+    {
+        std::vector<Entity*>::const_iterator itr;
+
+        for (itr = children.begin(); itr != children.end(); ++itr)
+        {
+            // do stuff  breadth-first
+
+            //ImGui::TreePush((void*)(*itr)->internalID);
+            Game::UI::Devel::DrawEntityNode((*itr));
+            // do stuff  depth-first
+        }
+    }
+
+
 private:
     friend class EntityData;
 
@@ -321,9 +463,47 @@ public:
 
     void Update(Entity* Entity);
     void Init(TextureRes* res);
+    void Unload();
+    void imgui_properties() {
+        ImGui::Text("Texture"); ImGui::SameLine();
+
+        bool tbp = (imgui_textureButtonPressed ? rlImGuiImageButtonSize("texture", &(texture->tex), { 100, 100 }) : rlImGuiImageButtonSize("texture", &(texture->tex), { 10, 10 }));
+
+        if (tbp) {
+            imgui_textureButtonPressed = !imgui_textureButtonPressed;
+        }
+
+        ImGui::NewLine();
+
+        float color[4];
+
+        color[0] = tint.r;
+        color[1] = tint.g;
+        color[2] = tint.b;
+        color[3] = tint.a;
+
+        ImGui::Text("Tint"); ImGui::SameLine();
+        ImGui::ColorEdit4("##", color);
+
+        tint = { (unsigned char)color[0], (unsigned char)color[1], (unsigned char)color[2], (unsigned char)color[3] };
+
+        ImGui::NewLine();
+
+        ImGui::Text("Rectangle");
+        ImGui::InputFloat("Rectangle X", &rec.x);
+        ImGui::InputFloat("Rectangle Y", &rec.y);
+        ImGui::InputFloat("Rectangle Width", &rec.width);
+        ImGui::InputFloat("Rectangle Height", &rec.height);
+
+        ImGui::NewLine();
+
+    };
     Rectangle rec;
     Color tint = WHITE;
 private:
+
+    bool imgui_textureButtonPressed;
+
 };
 
 class AnimatedRenderer2D : public Renderer2D {
@@ -338,13 +518,62 @@ public:
     TextureRes* texture;
     Rectangle rec;
     Rectangle srcRect;
+    Color tint = WHITE;
 
     void Update(Entity* Entity);
     void Init(const char* path);
     void Init(TextureRes* tex);
+    void Unload();
+
+    void imgui_properties() {
+        ImGui::Text("Texture"); ImGui::SameLine();
+
+        bool tbp = (imgui_textureButtonPressed ? rlImGuiImageButtonSize("texture", &(texture->tex), { 100, 100 }) : rlImGuiImageButtonSize("texture", &(texture->tex), { 10, 10 }));
+
+        if (tbp) {
+            imgui_textureButtonPressed = !imgui_textureButtonPressed;
+        }
+
+        ImGui::NewLine();
+
+        float color[4];
+
+        color[0] = tint.r;
+        color[1] = tint.g;
+        color[2] = tint.b;
+        color[3] = tint.a;
+
+        ImGui::Text("Tint"); ImGui::SameLine();
+        ImGui::ColorEdit4("##", color);
+
+        tint.r = color[0];
+        tint.g = color[1];
+        tint.b = color[2];
+        tint.a = 255;
+
+        ImGui::NewLine();
+
+        ImGui::Text("Rectangle");
+        ImGui::DragFloat("Rectangle X", &rec.x);
+        ImGui::DragFloat("Rectangle Y", &rec.y);
+        ImGui::DragFloat("Rectangle Width", &rec.width);
+        ImGui::DragFloat("Rectangle Height", &rec.height);
+
+        ImGui::NewLine();
+
+        ImGui::Text("Source Rectangle");
+        ImGui::DragFloat("Rectangle X", &srcRect.x);
+        ImGui::DragFloat("Rectangle Y", &srcRect.y);
+        ImGui::DragFloat("Rectangle Width", &srcRect.width);
+        ImGui::DragFloat("Rectangle Height", &srcRect.height);
+
+        ImGui::NewLine();
+
+    };
+
     //Rectangle rec;
 private:
-
+    bool imgui_textureButtonPressed;
 };
 
 
@@ -408,6 +637,7 @@ class SceneMgr {
 public:
     void Init(Engine* eng);
     void Update(CameraMgr* camMgr);
+    void Unload();
 
     //void LoadScene(const char* path);
 
@@ -423,7 +653,7 @@ public:
         scene->entityData->scene = scene;
         scene->engine = engine;
         scene->sceneIndex = scenes.size()-1;
-        //UnloadCurrentScene();
+        UnloadCurrentScene();
         //currentScene = scene;
         return scene;
     }
@@ -559,36 +789,36 @@ public:
         //printf("%.3f\n", health);
 
         if (health > 0.59 && health < 0.69) {
-            entity->scene->entityData->entities.at(1)->GetComponent<AnimatedRenderer2D>()->srcRect = { 18 * 5, 18 * 2, 18, 18 };
+            entity->scene->entityData->find("heart1")->GetComponent<AnimatedRenderer2D>()->srcRect = {18 * 5, 18 * 2, 18, 18};
         }
         if (health <= 0.59) {
-            entity->scene->entityData->entities.at(1)->GetComponent<AnimatedRenderer2D>()->srcRect = { 18 * 6, 18 * 2, 18, 18 };
+            entity->scene->entityData->find("heart1")->GetComponent<AnimatedRenderer2D>()->srcRect = { 18 * 6, 18 * 2, 18, 18 };
         }
 
         if (health >= 0.69) {
-            entity->scene->entityData->entities.at(1)->GetComponent<AnimatedRenderer2D>()->srcRect = { 18 * 4, 18 * 2, 18, 18 };
+            entity->scene->entityData->find("heart1")->GetComponent<AnimatedRenderer2D>()->srcRect = { 18 * 4, 18 * 2, 18, 18 };
         }
 
         if (health > 0.39 && health < 0.49) {
-            entity->scene->entityData->entities.at(2)->GetComponent<AnimatedRenderer2D>()->srcRect = { 18 * 5, 18 * 2, 18, 18 };
+            entity->scene->entityData->find("heart2")->GetComponent<AnimatedRenderer2D>()->srcRect = { 18 * 5, 18 * 2, 18, 18 };
         }
         if (health <= 0.39) {
-            entity->scene->entityData->entities.at(2)->GetComponent<AnimatedRenderer2D>()->srcRect = { 18 * 6, 18 * 2, 18, 18 };
+            entity->scene->entityData->find("heart2")->GetComponent<AnimatedRenderer2D>()->srcRect = { 18 * 6, 18 * 2, 18, 18 };
         }
 
         if (health >= 0.49) {
-            entity->scene->entityData->entities.at(2)->GetComponent<AnimatedRenderer2D>()->srcRect = { 18 * 4, 18 * 2, 18, 18 };
+            entity->scene->entityData->find("heart2")->GetComponent<AnimatedRenderer2D>()->srcRect = { 18 * 4, 18 * 2, 18, 18 };
         }
 
         if (health > 0.00 && health < 0.19) {
-            entity->scene->entityData->entities.at(3)->GetComponent<AnimatedRenderer2D>()->srcRect = { 18 * 5, 18 * 2, 18, 18 };
+            entity->scene->entityData->find("heart3")->GetComponent<AnimatedRenderer2D>()->srcRect = { 18 * 5, 18 * 2, 18, 18 };
         }
         if (health <= 0.00) {
-            entity->scene->entityData->entities.at(3)->GetComponent<AnimatedRenderer2D>()->srcRect = { 18 * 6, 18 * 2, 18, 18 };
+            entity->scene->entityData->find("heart3")->GetComponent<AnimatedRenderer2D>()->srcRect = { 18 * 6, 18 * 2, 18, 18 };
         }
 
         if (health >= 0.19) {
-            entity->scene->entityData->entities.at(3)->GetComponent<AnimatedRenderer2D>()->srcRect = { 18 * 4, 18 * 2, 18, 18 };
+            entity->scene->entityData->find("heart3")->GetComponent<AnimatedRenderer2D>()->srcRect = { 18 * 4, 18 * 2, 18, 18 };
         }
 
     }
@@ -735,42 +965,440 @@ inline float perlin2d(float x, float y, float freq, int depth)
     return fin / div;
 }
 
-namespace Game {
-    namespace UI {
-        namespace Devel {
-            inline void DrawConsole(Camera2D* cam, bool* lock, b2World* world, Engine* engine, Player* player, EntityData* entityData)
+inline void Game::UI::Devel::DrawEntityNode(Entity* entity) {
+    ImGuiTreeNodeFlags flags = ((m_selectionContext == entity) ? ImGuiTreeNodeFlags_Selected : 0) | ImGuiTreeNodeFlags_OpenOnArrow;
+    bool opened = ImGui::TreeNodeEx((void*)(uint64_t)(uint32_t)entity, flags, entity->name);
+
+    if (ImGui::IsItemClicked()) {
+
+        m_selectionContext = entity;
+    }
+
+    if (opened) {
+        entity->imgui_iterate();
+        ImGui::TreePop();
+    }
+
+    if (m_selectionContext == entity) {
+
+        ImGui::Begin("Properties Window");
+
+        if (ImGui::TreeNodeEx("Transform", ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_DefaultOpen)) {
+
+            ImGui::Text("Global Position"); ImGui::SameLine();
+            ImGui::Text("X: %.3f Y: %.3f Z: %.3f", entity->globalPosition.x, entity->globalPosition.y, entity->globalPosition.z);
+
+            ImGui::Text("Local Position");
+            ImGui::DragFloat("Local pX", &entity->localPosition.x);
+            ImGui::DragFloat("Local pY", &entity->localPosition.y);
+            ImGui::DragFloat("Local pZ", &entity->localPosition.z);
+
+            ImGui::Text("Global Rotation"); ImGui::SameLine();
+            ImGui::Text("X: %.3f Y: %.3f Z: %.3f", entity->globalRotation.x, entity->globalRotation.y, entity->globalRotation.z);
+
+            ImGui::Text("Local Rotation");
+            ImGui::DragFloat("Local rX", &entity->localRotation.x);
+            ImGui::DragFloat("Local rY", &entity->localRotation.y);
+            ImGui::DragFloat("Local rZ", &entity->localRotation.z);
+
+            ImGui::Text("Global Scale"); ImGui::SameLine();
+            ImGui::Text("X: %.3f Y: %.3f Z: %.3f", entity->globalScale.x, entity->globalScale.y, entity->globalScale.z);
+
+            ImGui::Text("Local Scale");
+            ImGui::DragFloat("Local sX", &entity->localScale.x);
+            ImGui::DragFloat("Local sY", &entity->localScale.y);
+            ImGui::DragFloat("Local sZ", &entity->localScale.z);
+
+            ImGui::TreePop();
+        }
+
+        for (auto const& component : entity->componentHolder->components) {
+
+            auto comp = component.get();
+
+            if (ImGui::TreeNodeEx(comp->GetName(), ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_DefaultOpen)) {
+
+                comp->imgui_properties();
+
+                ImGui::TreePop();
+            }
+        }
+
+        ImGui::End();
+    }
+}
+
+inline void Game::UI::Devel::DrawConsole(Camera2D* cam, bool* lock, b2World* world, Engine* engine, Player* player, EntityData* entityData)
+{
+    ImGui::Begin("Game Properties");
+
+    ImGui::DragFloat("Camera Target - X", &cam->target.x);
+    ImGui::DragFloat("Camera Target - Y", &cam->target.y);
+    ImGui::Text("Camera Target: %.2f, %.2f", cam->target.x, cam->target.y);
+    ImGui::Checkbox("Lock Camera", lock);
+    ImGui::Text("Gravity: %.2f, %.2f", world->GetGravity().x, world->GetGravity().y);
+    ImGui::SliderFloat("Camera Zoom", &cam->zoom, 0.05, 5);
+    ImGui::SliderFloat("Player Health", &player->health, 0.0f, 1.0f);
+    ImGui::Checkbox("RPC", &gRPC);
+
+    ImGui::End();
+
+    ImGui::Begin("Scene Heirarchy");
+
+    for (Entity* entity : entityData->entities) {
+
+        if (!entity->parent) {
+            DrawEntityNode(entity);
+        }
+    }
+
+    ImGui::End();
+
+    //ImGui::SliderFloat("Gravity - X", &engine->physicsMgr->gravity.x, -1000, 1000);
+    //ImGui::SliderFloat("Gravity - Y", &engine->physicsMgr->gravity.y, -1000000, 1000);
+}
+
+// Draw part of a texture (defined by a rectangle) with rotation and scale tiled into dest.
+inline void DrawTextureTiled(Texture2D texture, Rectangle source, Rectangle dest, Vector2 origin, float rotation, float scale, Color tint)
+{
+    if ((texture.id <= 0) || (scale <= 0.0f)) return;  // Wanna see a infinite loop?!...just delete this line!
+    if ((source.width == 0) || (source.height == 0)) return;
+
+    int tileWidth = (int)(source.width * scale), tileHeight = (int)(source.height * scale);
+    if ((dest.width < tileWidth) && (dest.height < tileHeight))
+    {
+        // Can fit only one tile
+        DrawTexturePro(texture, Rectangle { source.x, source.y, ((float)dest.width / tileWidth)* source.width, ((float)dest.height / tileHeight)* source.height },
+             {
+            dest.x, dest.y, dest.width, dest.height
+        }, origin, rotation, tint);
+    }
+    else if (dest.width <= tileWidth)
+    {
+        // Tiled vertically (one column)
+        int dy = 0;
+        for (; dy + tileHeight < dest.height; dy += tileHeight)
+        {
+            DrawTexturePro(texture, Rectangle { source.x, source.y, ((float)dest.width / tileWidth)* source.width, source.height },  { dest.x, dest.y + dy, dest.width, (float)tileHeight }, origin, rotation, tint);
+        }
+
+        // Fit last tile
+        if (dy < dest.height)
+        {
+            DrawTexturePro(texture, Rectangle{ source.x, source.y, ((float)dest.width / tileWidth)* source.width, ((float)(dest.height - dy) / tileHeight)* source.height },
+                 {
+                dest.x, dest.y + dy, dest.width, dest.height - dy
+            }, origin, rotation, tint);
+        }
+    }
+    else if (dest.height <= tileHeight)
+    {
+        // Tiled horizontally (one row)
+        int dx = 0;
+        for (; dx + tileWidth < dest.width; dx += tileWidth)
+        {
+            DrawTexturePro(texture,  { source.x, source.y, source.width, ((float)dest.height / tileHeight)* source.height },  { dest.x + dx, dest.y, (float)tileWidth, dest.height }, origin, rotation, tint);
+        }
+
+        // Fit last tile
+        if (dx < dest.width)
+        {
+            DrawTexturePro(texture,  { source.x, source.y, ((float)(dest.width - dx) / tileWidth)* source.width, ((float)dest.height / tileHeight)* source.height },
+                 {
+                dest.x + dx, dest.y, dest.width - dx, dest.height
+            }, origin, rotation, tint);
+        }
+    }
+    else
+    {
+        // Tiled both horizontally and vertically (rows and columns)
+        int dx = 0;
+        for (; dx + tileWidth < dest.width; dx += tileWidth)
+        {
+            int dy = 0;
+            for (; dy + tileHeight < dest.height; dy += tileHeight)
             {
-                ImGui::Begin("GDC");
+                DrawTexturePro(texture, source,  { dest.x + dx, dest.y + dy, (float)tileWidth, (float)tileHeight }, origin, rotation, tint);
+            }
 
-                ImGui::SliderFloat("Camera Target - X", &cam->target.x, -1000, 1000);
-                ImGui::SliderFloat("Camera Target - Y", &cam->target.y, -1000, 1000);
-                ImGui::Text("Camera Target: %.2f, %.2f", cam->target.x, cam->target.y);
-                ImGui::Checkbox("Lock Camera", lock);
-                ImGui::Text("Gravity: %.2f, %.2f", world->GetGravity().x, world->GetGravity().y);
-                ImGui::SliderFloat("Camera Zoom", &cam->zoom, 0, 100);
-                ImGui::SliderFloat("Player Health", &player->health, 0.0f, 1.0f);
+            if (dy < dest.height)
+            {
+                DrawTexturePro(texture,  { source.x, source.y, source.width, ((float)(dest.height - dy) / tileHeight)* source.height },
+                     {
+                    dest.x + dx, dest.y + dy, (float)tileWidth, dest.height - dy
+                }, origin, rotation, tint);
+            }
+        }
 
-                ImGui::End();
+        // Fit last column of tiles
+        if (dx < dest.width)
+        {
+            int dy = 0;
+            for (; dy + tileHeight < dest.height; dy += tileHeight)
+            {
+                DrawTexturePro(texture,  { source.x, source.y, ((float)(dest.width - dx) / tileWidth)* source.width, source.height },
+                     {
+                    dest.x + dx, dest.y + dy, dest.width - dx, (float)tileHeight
+                }, origin, rotation, tint);
+            }
 
-                //ImGui::SliderFloat("Gravity - X", &engine->physicsMgr->gravity.x, -1000, 1000);
-                //ImGui::SliderFloat("Gravity - Y", &engine->physicsMgr->gravity.y, -1000000, 1000);
+            // Draw final tile in the bottom right corner
+            if (dy < dest.height)
+            {
+                DrawTexturePro(texture,  { source.x, source.y, ((float)(dest.width - dx) / tileWidth)* source.width, ((float)(dest.height - dy) / tileHeight)* source.height },
+                     {
+                    dest.x + dx, dest.y + dy, dest.width - dx, dest.height - dy
+                }, origin, rotation, tint);
             }
         }
     }
-};
+}
+
+inline bool ColorEquals(Color c1, Color c2) {
+    if (c1.r == c2.r && c1.g == c2.g && c1.b == c2.b) {
+        return true;
+    }
+    else {
+        return false;
+    }
+}
 
 struct compare
 {
-    Vector2 key;
-    compare(Vector2 const& i) : key(i) {}
+    Vector2 vkey;
+    Color ckey;
+    compare(Vector2 const& i) : vkey(i) {}
+    compare(Color const& i) : ckey(i) {}
 
     bool operator()(Vector2 const& i) {
-        return (Vector2Equals(i, key));
+        return (Vector2Equals(i, vkey));
     }
+
+    bool operator()(const Color& i) {
+        return (ColorEquals(i, ckey));
+    }
+};
+
+struct MLColor {
+    unsigned char r;
+    unsigned char g;
+    unsigned char b;
+    unsigned char a;
+
+    MLColor() = default;
+
+    MLColor(Color color) {
+        r = color.r;
+        g = color.g;
+        b = color.b;
+        a = color.a;
+    }
+
+    MLColor operator()(Color const& color) {
+        r = color.r;
+        g = color.g;
+        b = color.b;
+        a = color.a;
+    }
+
 };
 
 #define csprivate(x) private: x public:
 #define cspublic(x) public: x private:
+
+template <class TemplateClass> struct List {
+private:
+    std::vector<TemplateClass> data;
+
+public:
+
+    int GetLength() {
+        return data.size();
+    }
+
+    void Insert(TemplateClass object, int position) {
+        
+        printf("inserted at %d\n", position);
+
+        data.insert(data.begin() + position, object);
+    }
+
+    TemplateClass& Get(int index) {
+        return data.at(index)
+    }
+
+    int IndexOf(TemplateClass object) {
+
+        if (typeid(TemplateClass).hash_code() == typeid(Color).hash_code()) {
+            auto itr = std::find_if(data.begin(), data.end(), [object](const Color& v1) {return v1.r == object.r && v1.g == object.g && v1.b == object.b; });
+
+            if (itr == data.end()) {
+                printf("nope\n");
+                return 0;
+            }
+            else {
+                printf("yep\n");
+                return std::distance(data.begin(), itr);
+            }
+        }
+    }
+
+    void Add(TemplateClass object) {
+        printf("pushed back at %d\n", data.size());
+        data.push_back(object);
+    }
+
+    bool Contains(TemplateClass& object) {
+        for (TemplateClass t : data) {
+            if (t == object) {
+                return true;
+                break;
+            }
+        }
+        return false;
+    }
+
+    void Unload() {
+        data.erase();
+    }
+};
+
+struct Tile {
+    const char* tileName;
+    Texture2D tileSprite;
+
+    float rarity;
+
+    inline void Unload() {
+        UnloadTexture(tileSprite);
+    }
+
+    inline static Tile Load(const char* path, const char* name) {
+        Tile tile = {};
+        tile.tileSprite = LoadTexture(path);
+        tile.tileName = name;
+
+        return tile;
+    }
+
+};
+
+
+
+struct TileAtlas {
+public:
+    Tile grass, dirt, stone, log, leaf, coal, iron, gold, diamond, sand, snow;
+
+    inline void Unload() {
+        grass.Unload();
+        dirt.Unload();
+        stone.Unload();
+        log.Unload();
+        leaf.Unload();
+        coal.Unload();
+        iron.Unload();
+        gold.Unload();
+        diamond.Unload();
+        sand.Unload();
+        snow.Unload();
+    }
+
+    static TileAtlas LoadDefault() {
+
+        TileAtlas tileAtlas = {};
+
+        tileAtlas.log = Tile::Load("resources/test/trunk_side.png", "log");
+        tileAtlas.leaf = Tile::Load("resources/test/leaves.png", "leaf");
+        tileAtlas.coal = Tile::Load("resources/test/stone_coal.png", "coal");
+        tileAtlas.iron = Tile::Load("resources/test/stone_silver.png", "iron");
+        tileAtlas.gold = Tile::Load("resources/test/stone_gold.png", "gold");
+        tileAtlas.diamond = Tile::Load("resources/test/stone_diamond.png", "diamond");
+        tileAtlas.sand = Tile::Load("resources/test/sand.png", "sand");
+        tileAtlas.snow = Tile::Load("resources/test/dirt_snow.png", "snow");
+        tileAtlas.stone = Tile::Load("resources/test/stone.png", "stone");
+        tileAtlas.dirt = Tile::Load("resources/test/dirt.png", "dirt");
+        tileAtlas.grass = Tile::Load("resources/test/dirt_grass.png", "grass");
+
+        return tileAtlas;
+    }
+
+};
+
+struct Ore {
+    float rarity, size;
+    int maxSpawnHeight;
+    const char* name;
+
+    inline void Unload() {
+        UnloadImage(spreadTexture);
+    }
+
+    static Ore Load(float rarity, float size, int maxSpawnHeight, const char* name) {
+        Ore ore = {};
+        ore.rarity = rarity;
+        ore.size = size;
+        ore.maxSpawnHeight = maxSpawnHeight;
+        ore.name = name;
+        return ore;
+    }
+
+    Image spreadTexture;
+};
+
+inline float distance(int x1, int y1, int x2, int y2)
+{
+    // Calculating distance
+    return sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2) * 1.0);
+}
+
+struct Biome {
+
+    Color biomeCol;
+    const char* biomeName;
+
+    TileAtlas tileAtlas;
+
+    float caveFreq = 0.06f;
+    float terrainFreq = 0.08f;
+    Image caveNoiseTexture;
+
+    bool generateCaves = true;
+    int dirtHeight = 5;
+    float surfaceValue = 0.25f;
+    float heightMultiplier = 25;
+
+    float minTreeHeight = 3;
+    float maxTreeHeight = 6;
+    int treeChance = 15;
+
+    std::vector<Ore> ores;
+
+    static Biome Load(const char* name, Color color) {
+        Biome biome = {};
+        biome.biomeName = name;
+        biome.biomeCol = color;
+
+        biome.ores.push_back((Ore::Load(0.1, 0.76, 50, "Coal")));
+        biome.ores.push_back((Ore::Load(0.08, 0.8, 30, "Iron")));
+        biome.ores.push_back((Ore::Load(0.07, 0.85, 20, "Gold")));
+        biome.ores.push_back((Ore::Load(0.075, 0.9, 17, "Diamond")));
+
+        return biome;
+    }
+};
+
+inline int GetIndexOfColor(std::vector<Color> vec, Color col) {
+    auto itr = std::find_if(vec.begin(), vec.end(), [col](const Color& v1) {return v1.r == col.r && v1.g == col.g && v1.b == col.b; });
+
+    if (itr == vec.end()) {
+        //printf("nope\n");
+        return 0;
+    }
+    else {
+        //printf("%d\n", std::distance(vec.begin(), itr));
+        return std::distance(vec.begin(), itr);
+    }
+}
 
 class TerrainGenerator : public Component {
     CLASS_DECLARATION(TerrainGenerator)
@@ -781,54 +1409,127 @@ public:
 
     TerrainGenerator() = default;
 
-    int worldSize;
-    float caveFreq, terrainFreq;
-    float seed;
-    float surfaceValue, dirtHeight;
-    float heightMultiplier;
-    int heightAddition;
-    Image caveNoiseTexture;
-    Texture2D stone;
-    Texture2D dirt;
-    Texture2D grass;
-    Texture2D baseLog;
-    Texture2D middleLog;
-    Texture2D leaf;
-    int treeChance;
-    bool generateCaves;
-    std::int32_t octaves;
-    float perlinFreq;
-    std::vector<Vector2> tiles;
-    std::vector<Entity*> worldChunks;
+    // Tile Atlas
+    TileAtlas tileAtlas;
+
+    // Ores
+    std::vector<Ore> ores;
+
+    // Biomes
+    Image biomeMap;
+    Texture biomeMapTexture;
+    float biomeFrequency = 0.05; 
+
+    std::vector<Biome> biomes;
+
+    // Generation Settings
+    int worldSize = 400;
+    int chunkSize = 16;
+    bool generateCaves = true;
+    int dirtHeight = 5;
+    float surfaceValue = 0.25f;
+    float heightMultiplier = 25;
+    int heightAddition = 25;
+
+    //Trees
     float minTreeHeight = 3;
     float maxTreeHeight = 10;
-    int chunkSize = 16;
+    int treeChance = 15;
 
-    float coalRarity, ironRarity, goldRarity, diamondRarity;
-    Image coalSpread, ironSpread, goldSpread, diamondSpread;
-   
+    // Noise Settings
+    float seed;
+    float caveFreq = 0.06f;
+    float terrainFreq = 0.08f; 
+    Image caveNoiseTexture;
 
-    inline void Init(Scene* connectedScene, const char* path1, const char* path2, const char* path3) {
-        worldSize = 400;
-        caveFreq = 0.08f;
-        terrainFreq = 0.06f;
-        surfaceValue = 0.25f;
+    // C++ Specifics
+    std::int32_t octaves = 8;
+    float perlinFreq = 8.0f;
+
+    std::vector<Vector2> tiles;
+    std::vector<Entity*> worldChunks;
+    std::vector<Color> biomeColors;
+
+    inline void imgui_properties() {
+        rlImGuiImageSize(&biomeMapTexture, 100, 100);
+
+    }
+
+    inline void Init(Scene* connectedScene) {
         seed = GetRandomValue(-10000,10000);
-        heightMultiplier = 25;
-        heightAddition = 25;
-        dirtHeight = 5;
-        generateCaves = true;
-        stone = LoadTexture(path1);
-        dirt = LoadTexture(path2);
-        grass = LoadTexture(path3);
-        treeChance = 15;
-        octaves = 8;
-        perlinFreq = 8.0f;
         scene = connectedScene;
-        GenerateNoiseTexture(caveFreq, &caveNoiseTexture);
+
+        DrawTextures();
+
         CreateChunks();
         //GenerateTerrain();
     };
+
+    inline void AddBiomeColors() {
+
+        biomeColors.clear();
+
+        for (int i = 0; i < biomes.size(); i++) {
+            biomeColors.emplace_back(biomes.at(i).biomeCol);
+        }
+
+    }
+
+    inline Image DrawBiomeTexture() {
+
+        Image image;
+
+        Color* pixels = (Color*)RL_MALLOC(worldSize * worldSize * sizeof(Color));
+
+        for (int y = 0; y < worldSize; y++)
+        {
+            for (int x = 0; x < worldSize; x++)
+            {
+                float v = perlin.octave2D_01((x + seed) * biomeFrequency, (y+seed) * biomeFrequency, octaves);
+                unsigned char vColor = v * 255;
+                pixels[y * worldSize + x] = { vColor, vColor, vColor, 255 };
+                if (v > 0.0f && v < 0.25f) {
+                    pixels[y * worldSize + x] = WHITE;
+                } 
+                if (v > 0.25f && v < 0.5f) {
+                    pixels[y * worldSize + x] = GREEN;
+                }
+                if (v > 0.5f && v < 0.75f) {
+                    pixels[y * worldSize + x] = ORANGE;
+                }
+                if (v > 0.75f && v < 1.0f) {
+                    pixels[y * worldSize + x] = GREEN;
+                }
+            }
+        }
+
+        image.data = pixels;
+        image.width = worldSize;
+        image.height = worldSize;
+        image.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+        image.mipmaps = 1;
+
+        return image;
+    }
+
+    inline void DrawTextures() {
+
+        UnloadImage(biomeMap);
+
+        biomeMap = DrawBiomeTexture();
+        biomeMapTexture = LoadTextureFromImage(biomeMap);
+
+        GenerateNoiseTexture(caveFreq, surfaceValue, &caveNoiseTexture);
+
+        for (int i = 0; i < biomes.size(); i++) {
+            for (int o = 0; o < biomes.at(i).ores.size(); o++) {
+                GenerateNoiseTexture(biomes.at(i).ores.at(o).rarity, ores.at(o).size, &(ores.at(o).spreadTexture));
+            }
+
+            GenerateNoiseTexture(biomes.at(i).caveFreq, biomes.at(i).surfaceValue, &biomes.at(i).caveNoiseTexture);
+
+        }
+    }
 
     inline void Update(Entity* entity) {
 
@@ -837,8 +1538,8 @@ public:
     void CreateChunks() {
         int numChunks = worldSize / chunkSize;
         worldChunks.clear();
-        for (int i = 0; i < numChunks; i++) {
-            Entity* newChunk = scene->entityData->createEntity(TextFormat("%d", i));
+        for (int chunk = 0; chunk < numChunks; chunk++) {
+            Entity* newChunk = scene->entityData->createEntity(std::to_string(chunk).c_str());
             entity->AddChild(newChunk);
             worldChunks.push_back(newChunk);
 
@@ -846,6 +1547,9 @@ public:
     }
 
     inline void GenerateTerrain() {
+
+        AddBiomeColors();
+
         for (int x = 0; x < worldSize; x++) {
 
             float height = Clamp((perlin.octave2D_01((x + seed) * terrainFreq, seed * terrainFreq, octaves)), 0, 1) * heightMultiplier + heightAddition;
@@ -858,22 +1562,37 @@ public:
                 Texture2D tileSprite;
                 Color tint = WHITE;
 
+                Biome currentBiome = GetCurrentBiome(x, y);
 
                 if (y < height - dirtHeight) {
 
-                    tileSprite = stone;
+
+                    tileSprite = currentBiome.tileAtlas.stone.tileSprite;
+
+                    if (GetImageColor(currentBiome.ores.at(0).spreadTexture, x, y).r > 0.5f * 255 && height - y < currentBiome.ores.at(0).maxSpawnHeight) {
+                        tileSprite = currentBiome.tileAtlas.coal.tileSprite;
+                    }
+                    if (GetImageColor(currentBiome.ores.at(1).spreadTexture, x, y).r > 0.5f * 255 && height - y < currentBiome.ores.at(1).maxSpawnHeight) {
+                        tileSprite = currentBiome.tileAtlas.iron.tileSprite;
+                    }
+                    if (GetImageColor(currentBiome.ores.at(2).spreadTexture, x, y).r > 0.5f * 255 && height - y < currentBiome.ores.at(2).maxSpawnHeight) {
+                        tileSprite = currentBiome.tileAtlas.gold.tileSprite;
+                    }
+                    if (GetImageColor(currentBiome.ores.at(3).spreadTexture, x, y).r > 0.5f * 255 && height - y < currentBiome.ores.at(3).maxSpawnHeight) {
+                        tileSprite = currentBiome.tileAtlas.diamond.tileSprite;
+                    }
                 }
                 else if (y < height - 1) {
-                    tileSprite = dirt;
+                    tileSprite = currentBiome.tileAtlas.dirt.tileSprite;
                 }
                 else {
-                    tileSprite = grass;
+                    tileSprite = currentBiome.tileAtlas.grass.tileSprite;
 
                     // we got the top layer
                 }
 
                 if (generateCaves) {
-                    if (GetImageColor(caveNoiseTexture, x, y).r > 255 * surfaceValue)
+                    if (GetImageColor(caveNoiseTexture, x, y).r > 255 * 0.5f)
                     {
                         PlaceTile(tileSprite, x, y);
                     }
@@ -883,11 +1602,11 @@ public:
                 }
 
                 if (y >= height - 1) {
-                    int t = GetRandomValue(0, treeChance);
+                    int t = GetRandomValue(0, currentBiome.treeChance);
                     if (t == 1) {
                         // generate a tree
                         if (std::find_if(tiles.begin(), tiles.end(), compare(Vector2{ (float)x,(float)y })) != tiles.end()) {
-                            GenerateTree(x, y + 1);
+                            GenerateTree(x, y + 1, currentBiome);
                         }
                     }
                 }
@@ -896,69 +1615,92 @@ public:
         }
     }
 
+    Biome curBiome;
+
+    Biome GetCurrentBiome(int x, int y) {
+
+        for (Biome biome : biomes) {
+            if (ColorEquals(biome.biomeCol, GetImageColor(biomeMap, x, y))) {
+                return biome;
+                break;
+            }
+        }
+
+        return curBiome;
+    }
+
     const siv::PerlinNoise perlin{(siv::PerlinNoise::seed_type)12345};
 
     inline void Unload() {
-        UnloadImage(coalSpread);
-        UnloadImage(ironSpread);
-        UnloadImage(goldSpread);
-        UnloadImage(diamondSpread);
+        printf("Unloaded terrain generator");
+
+        for (Ore ore : ores) {
+            ore.Unload();
+        }
+
+        UnloadImage(caveNoiseTexture);
+        tileAtlas.Unload();
+        UnloadImage(biomeMap);
     }
 
 private:
 
     Scene* scene;
 
-    void GenerateTree(float x, float y) {
+    void GenerateTree(float x, float y, Biome biome) {
 
         //printf("generating a tree\n");
 
-        int treeHeight = GetRandomValue(minTreeHeight, maxTreeHeight);
+        int treeHeight = GetRandomValue(biome.minTreeHeight, biome.maxTreeHeight);
 
         // generate log
         for (int i = 0; i <= treeHeight; i++) {
             if (i == 0) {
-                PlaceTile(middleLog, x, y + i);
+                PlaceTile(biome.tileAtlas.log.tileSprite, x, y + i);
             }
             else {
-                PlaceTile(middleLog, x, y + i);
+                PlaceTile(biome.tileAtlas.log.tileSprite, x, y + i);
             }
         }
 
         // generate leaves
-        PlaceTile(leaf, x, y + treeHeight);
-        PlaceTile(leaf, x, y + treeHeight+1);
-        PlaceTile(leaf, x, y + treeHeight+2);
+        PlaceTile(biome.tileAtlas.leaf.tileSprite, x, y + treeHeight);
+        PlaceTile(biome.tileAtlas.leaf.tileSprite, x, y + treeHeight+1);
+        PlaceTile(biome.tileAtlas.leaf.tileSprite, x, y + treeHeight+2);
+        PlaceTile(biome.tileAtlas.leaf.tileSprite, x, y + treeHeight - 1);
 
-        PlaceTile(leaf, x-1, y + treeHeight);
-        PlaceTile(leaf, x-1, y + treeHeight+1);
+        PlaceTile(biome.tileAtlas.leaf.tileSprite, x-1, y + treeHeight);
+        PlaceTile(biome.tileAtlas.leaf.tileSprite, x-1, y + treeHeight+1);
 
-        PlaceTile(leaf, x + 1, y + treeHeight);
-        PlaceTile(leaf, x + 1, y + treeHeight + 1);
+        PlaceTile(biome.tileAtlas.leaf.tileSprite, x + 1, y + treeHeight);
+        PlaceTile(biome.tileAtlas.leaf.tileSprite, x + 1, y + treeHeight + 1);
     }
 
     void PlaceTile(Texture2D sprite, float x, float y) {
 
-        int chunkCoord = round((int)x / chunkSize) * chunkSize;
-        chunkCoord /= chunkSize;
-        chunkCoord = Clamp(chunkCoord, 0, (worldSize / chunkSize)-1);
 
-        //printf("%d\n", chunkCoord);
+        if (!(std::find_if(tiles.begin(), tiles.end(), compare(Vector2{ (float)x,(float)y })) != tiles.end())) {
+            int chunkCoord = round((int)x / chunkSize) * chunkSize;
+            chunkCoord /= chunkSize;
+            chunkCoord = Clamp(chunkCoord, 0, (worldSize / chunkSize) - 1);
 
-        Entity* chunk = worldChunks.at(chunkCoord);
+            //printf("%d\n", chunkCoord);
 
-        float tileSize = 1;
+            Entity* chunk = worldChunks.at(chunkCoord);
 
-        Entity* newTile = scene->entityData->createEntity(TextFormat("tile %.2f, %.2f", x, y));
-        newTile->localPosition = { ((float)x*chunk->globalScale.x) + ((sprite.width / 2)), ((float)y*chunk->globalScale.y) + ((sprite.height / 2)) };
-        worldChunks.at(chunkCoord)->AddChild(newTile);
-        Renderer2D* renderer = newTile->AddComponent<Renderer2D>();
-        renderer->rec = { 0,0,tileSize * chunk->globalScale.x, tileSize * chunk->globalScale.y };
-        renderer->Init(engine->textureMgr->LoadTextureM(sprite));
-        tiles.push_back(Vector2Subtract(Vector2Divide({ newTile->localPosition.x, newTile->localPosition.y }, {chunk->globalScale.x, chunk->globalScale.y}), Vector2Multiply(Vector2One(), {((float)(sprite.width / 2)),((float)(sprite.height / 2))})));
+            float tileSize = 1;
+
+            Entity* newTile = scene->entityData->createEntity("tile");
+            newTile->localPosition = { ((float)x) + ((sprite.width / 2)), ((float)y) + ((sprite.height / 2)) };
+            worldChunks.at(chunkCoord)->AddChild(newTile);
+            Renderer2D* renderer = newTile->AddComponent<Renderer2D>();
+            renderer->rec = { 0,0,tileSize, tileSize };
+            renderer->Init(engine->textureMgr->LoadTextureM(sprite));
+            tiles.push_back(Vector2Subtract({ newTile->localPosition.x, newTile->localPosition.y }, Vector2Multiply(Vector2One(), { ((float)(sprite.width / 2)),((float)(sprite.height / 2)) })));
+        }
     }
 
-    void GenerateNoiseTexture(float frequency, Image* noiseTexture) {
+    void GenerateNoiseTexture(float frequency, float limit, Image* noiseTexture) {
 
         UnloadImage(*noiseTexture);
 
@@ -969,8 +1711,14 @@ private:
             for (int x = 0; x < worldSize; x++)
             {
                 float v = perlin.octave2D_01((x + seed) * frequency, (y + seed) * frequency, octaves);
-                unsigned char vColor = v * 255;
-                pixels[y * worldSize + x] = { vColor, vColor, vColor, 255 };
+                if (v > limit) {
+                    pixels[y * worldSize + x] = WHITE;
+                }
+                else {
+                    pixels[y * worldSize + x] = BLACK;
+                }
+                //unsigned char vColor = v * 255;
+                //pixels[y * worldSize + x] = { vColor, vColor, vColor, 255 };
             }
         }
 
@@ -1045,14 +1793,50 @@ public:
 
         Entity* terrain = entityData->createEntity("terrain");
 
+        terrain->localPosition = {-225, -100};
+
         float terrainScale = 30;
 
         terrain->localScale = { terrainScale,terrainScale,terrainScale };
         TerrainGenerator* terrainGenerator = terrain->AddComponent<TerrainGenerator>();
-        terrainGenerator->Init(this, "resources/boxgrey.png", "resources/boxbrown.png", "resources/boxgreen.png");
-        terrainGenerator->baseLog = LoadTexture("resources/boxbrown.png");
-        terrainGenerator->middleLog = LoadTexture("resources/boxbrown.png");
-        terrainGenerator->leaf = LoadTexture("resources/boxgreen.png");
+        terrainGenerator->Init(this);
+        terrainGenerator->tileAtlas.log = Tile::Load("resources/test/trunk_mid.png", "log");
+        terrainGenerator->tileAtlas.leaf = Tile::Load("resources/test/leaves.png", "leaf");
+        terrainGenerator->tileAtlas.coal = Tile::Load("resources/test/stone_coal.png", "coal");
+        terrainGenerator->tileAtlas.iron = Tile::Load("resources/test/stone_silver.png", "iron");
+        terrainGenerator->tileAtlas.gold = Tile::Load("resources/test/stone_gold.png", "gold");
+        terrainGenerator->tileAtlas.diamond = Tile::Load("resources/test/stone_diamond.png", "diamond");
+        terrainGenerator->tileAtlas.sand = Tile::Load("resources/test/sand.png", "sand");
+        terrainGenerator->tileAtlas.snow = Tile::Load("resources/test/dirt_snow.png", "snow");
+        terrainGenerator->tileAtlas.stone = Tile::Load("resources/test/stone.png", "stone");
+        terrainGenerator->tileAtlas.dirt = Tile::Load("resources/test/dirt.png", "dirt");
+        terrainGenerator->tileAtlas.grass = Tile::Load("resources/test/dirt_grass.png", "grass");
+
+        Biome grassland = Biome::Load("Grassland", GREEN);
+        grassland.tileAtlas = TileAtlas::LoadDefault();
+
+        terrainGenerator->biomes.push_back(grassland);
+
+        Biome snow = Biome::Load("Snow", WHITE);
+        snow.tileAtlas = TileAtlas::LoadDefault();
+        snow.tileAtlas.grass.Unload();
+        snow.tileAtlas.grass = Tile::Load("resources/test/dirt_snow.png", "grass");
+        snow.tileAtlas.leaf.Unload();
+        snow.tileAtlas.leaf = Tile::Load("resources/test/snow.png", "leaf");
+        snow.treeChance = 0;
+        terrainGenerator->biomes.push_back(snow);
+
+        Biome desert = Biome::Load("Desert", ORANGE);
+        desert.tileAtlas = TileAtlas::LoadDefault();
+        desert.tileAtlas.grass.Unload();
+        desert.tileAtlas.grass = Tile::Load("resources/test/sand.png", "grass");
+        desert.tileAtlas.dirt.Unload();
+        desert.tileAtlas.dirt = Tile::Load("resources/test/sand.png", "dirt");
+        desert.treeChance = 0;
+        terrainGenerator->biomes.push_back(desert);
+
+        terrainGenerator->AddBiomeColors();
+
         terrainGenerator->GenerateTerrain();
 
         /*
@@ -1063,6 +1847,8 @@ public:
         heartRen->rec = { 0,0,50,50 };
         heart->tag = "ui";
         */
+
+        SetupDiscord();
 
     }
 
@@ -1078,6 +1864,9 @@ public:
 
         }
 
+        SetupDiscord();
+        UpdateDiscord("Test Scene", "testscene");
+
         BeginDrawing();
         ClearBackground(BLACK);
         BeginMode2D((Camera2D)cam->cam2D);
@@ -1085,7 +1874,7 @@ public:
         rlPushMatrix();
         rlTranslatef(0, 25 * 50, 0);
         rlRotatef(90, 1, 0, 0);
-        DrawGrid(100, 50);
+        //DrawGrid(100, 50);
         rlPopMatrix();
 
         entityData->Update();
@@ -1095,8 +1884,9 @@ public:
         EndMode2D();
         DrawFPS(10, 10);
 
-        entityData->UI_Update();
+        DrawText("Please remember: this is NOT FINAL.\n The assets used are placeholders.", 10, 35, 20, RED);
 
+        entityData->UI_Update();
 
         rlImGuiBegin();
 
@@ -1105,10 +1895,16 @@ public:
         rlImGuiEnd();
 
         EndDrawing();
+
+        if (IsKeyPressed(KEY_C)) {
+            TakeScreenshot(TextReplace("screenshots/screenshotGOOD.png", "GOOD", std::to_string(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count()).c_str()));
+        }
     }
 
     void scene_unload() {
         entityData->Unload();
+        Discord_ClearPresence();
+        Discord_Shutdown();
         originalUnload();
     }
 

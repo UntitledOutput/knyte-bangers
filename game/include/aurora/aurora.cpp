@@ -234,9 +234,12 @@ void Entity::Unload()
 ;
 
 void Renderer2D::Update(Entity* entity) {
-    //rec = { 0,0,(float)texture->tex.width * entity->globalScale.x, (float)texture->tex.height * entity->globalScale.y };
+    //rec = { 0,0,(float)texture->tex.width, (float)texture->tex.height };
     texture->Update();
-    DrawTexturePro(texture->tex, {0,0,(float)texture->tex.width, (float)texture->tex.height}, rec, {entity->globalPosition.x, entity->globalPosition.y}, 0,tint);
+
+
+    DrawTexturePro(texture->tex, { 0,0,(float)texture->tex.width, (float)texture->tex.height }, {-entity->globalPosition.x * entity->globalScale.x,-entity->globalPosition.y * entity->globalScale.y, rec.width* entity->globalScale.x, rec.height*entity->globalScale.y}, { 0,0 }, entity->globalRotation.y, tint);
+
 }
 
 void AnimatedRenderer2D::Update(Entity* entity) 
@@ -248,12 +251,12 @@ void AnimatedRenderer2D::Update(Entity* entity)
         {
             entity->globalPosition.x,
             entity->globalPosition.y,
-            rec.width,
-            rec.height,
+            rec.width*entity->globalScale.x,
+            rec.height*entity->globalScale.y,
         },
-        {0,0},
-        0,
-        WHITE
+        { 0,0 },
+        entity->globalRotation.y,
+        tint
     );
 }
 
@@ -267,10 +270,20 @@ void AnimatedRenderer2D::Init(TextureRes* tex)
     texture = tex;
 }
 
+void AnimatedRenderer2D::Unload()
+{
+    UnloadTexture(texture->tex);
+}
+
 void Renderer2D::Init(TextureRes* res)
 {
     texture = res;
     tint = WHITE;
+}
+
+void Renderer2D::Unload()
+{
+    UnloadTexture(texture->tex);
 }
 
 void Actor2D::Init()
@@ -297,6 +310,7 @@ void SceneMgr::Update(CameraMgr* camMgr)
                 auto curScene = scene.get();
                 
                 curScene->scene_update(camMgr->currentCamera);
+
             }
         }
     }
@@ -309,6 +323,16 @@ void SceneMgr::Update(CameraMgr* camMgr)
         DrawText("Unable to update scene... :(", 250, 200, 20, LIGHTGRAY);
 
         EndDrawing();
+    }
+}
+void SceneMgr::Unload()
+{
+    for (auto const& scene : scenes) {
+        if (scene->isActive) {
+            auto curScene = scene.get();
+
+            curScene->scene_unload();
+        }
     }
 }
 /*
@@ -359,6 +383,7 @@ void Engine::Update()
 
 void Engine::Unload()
 {
+    sceneMgr->Unload();
 }
 
 void Scene::scene_init()
@@ -500,6 +525,7 @@ Entity *EntityData::createEntity(const char* name)
     entity->engine = this->engine;
     entity->scene = this->scene;
     entity->name = name;
+    entity->internalID = entities.size();
     entities.push_back(entity);
     return entity;
 }

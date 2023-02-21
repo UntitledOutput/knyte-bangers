@@ -85,6 +85,9 @@ workspace (workspaceName)
     icon ("resources/icon/main.ico")
 
     includedirs {"game/include", "game/include/imgui"}
+    libdirs {"game/lib"}
+
+    links {"discord-rpc"}
 
     filter "configurations:Debug"
         defines { "DEBUG" }

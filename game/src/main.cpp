@@ -44,7 +44,7 @@ int main(void)
     camera.rotation = 0.0f;
     camera.zoom = 1.0f;
 
-    SetTargetFPS(60);               // Set our game to run at 60 frames-per-second
+    //SetTargetFPS(60);               // Set our game to run at 60 frames-per-second
 
     //SetCameraMode(camera, CAMERA_ORBITAL);  // Set a orbital camera mode    
 
@@ -141,6 +141,8 @@ int main(void)
 
         //Draw3DCallback(scene, camera, drawCallback);
     }
+
+    engine->Unload();
 
     UnloadMusicStream(music);
     CloseAudioDevice();
