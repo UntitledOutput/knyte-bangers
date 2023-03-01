@@ -26,8 +26,7 @@ int main(void)
     engine = new Engine();
     engine->Init();
     
-    TestScene* scene = engine->sceneMgr->LoadScene<TestScene>();
-    scene->isActive = true;
+    Boot* scene = engine->sceneMgr->LoadScene<Boot>();
     scene->scene_init();
 
 
