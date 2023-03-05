@@ -87,15 +87,15 @@ workspace (workspaceName)
     includedirs {"game/include", "game/include/imgui"}
     libdirs {"game/lib"}
 
-    links {"discord-rpc"}
-
     filter "configurations:Debug"
         defines { "DEBUG" }
         symbols "On"
+        links {"discord-rpc-debug"}
 
     filter "configurations:Release"
         defines { "NDEBUG" }
         optimize "On"
+        links {"discord-rpc-release"}
 
     filter { "platforms:x64" }
         architecture "x86_64"

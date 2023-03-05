@@ -354,13 +354,7 @@ void SceneMgr::Update(CameraMgr* camMgr)
 }
 void SceneMgr::Unload()
 {
-    for (auto const& scene : scenes) {
-        if (scene->isActive) {
-            auto curScene = scene.get();
-
-            curScene->scene_unload();
-        }
-    }
+    UnloadCurrentScene();
 }
 /*
 void SceneMgr::LoadScene(const char* path)
@@ -422,7 +416,8 @@ void Engine::Unload()
     rlImGuiShutdown();
     lightMgr->Unload();
     sceneMgr->Unload();
-    audioMgr->Unload();
+    //audioMgr->Unload();
+    delete physicsMgr->world;
 }
 
 void Scene::scene_init()
